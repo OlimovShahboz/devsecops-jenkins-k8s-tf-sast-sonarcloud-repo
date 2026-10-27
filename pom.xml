@@ -307,10 +307,13 @@
     <plugin>
       <groupId>io.snyk</groupId>
       <artifactId>snyk-maven-plugin</artifactId>
-      <version>2.0.0</version>
+      <version>2.3.0</version>
       <inherited>false</inherited>
       <configuration>
-        <org>asecurityguru</org>
+        <!-- Token comes from the SNYK_TOKEN env var (Jenkins credential 'snyk-token'); the scan uses the token's default Snyk org -->
+        <apiToken>${env.SNYK_TOKEN}</apiToken>
+        <!-- Report vulnerabilities without failing the build (EasyBuggy is vulnerable on purpose) -->
+        <failOnIssues>false</failOnIssues>
       </configuration>
     </plugin>
 <!-- Snyk Changes for SCA Ends Here -->
