@@ -19,6 +19,10 @@
 		<jvm.args.gc.log.file.rotation>-XX:+UseGCLogFileRotation</jvm.args.gc.log.file.rotation>
 		<jvm.args.number.of.gc.log.files>-XX:NumberOfGCLogFiles=5</jvm.args.number.of.gc.log.files>
 		<jvm.args.gc.log.file.size>-XX:GCLogFileSize=10M</jvm.args.gc.log.file.size>
+		<!-- SonarCloud (SAST) settings; the token is passed by Jenkins as -Dsonar.token -->
+		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+		<sonar.organization>olimovshahboz</sonar.organization>
+		<sonar.projectKey>OlimovShahboz_devsecops-jenkins-k8s-tf-sast-sonarcloud-repo</sonar.projectKey>
 	</properties>
 
 	<profiles>
@@ -301,6 +305,12 @@
 					</execution>
 				</executions>
 			</plugin>
+			<!-- SAST scan using SonarCloud, run with: mvn sonar:sonar -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>5.8.0.7211</version>
+			</plugin>
 			<!--# Changes for Software Composition Analysis Scan using Snyk
 #By ASecurityGuru
 -->
@@ -315,6 +325,34 @@
         <!-- Report vulnerabilities without failing the build (EasyBuggy is vulnerable on purpose) -->
         <failOnIssues>false</failOnIssues>
       </configuration>
+      <executions>
+        <!-- Run with: mvn snyk:test@snyk-test. Writes the results to snyk-report.json for Jenkins to archive and email -->
+        <execution>
+          <id>snyk-test</id>
+          <phase>none</phase>
+          <goals>
+            <goal>test</goal>
+          </goals>
+          <configuration>
+            <args>
+              <arg>--json-file-output=snyk-report.json</arg>
+            </args>
+          </configuration>
+        </execution>
+        <!-- Run with: mvn snyk:monitor@snyk-monitor. phase "none" keeps it out of mvn install -->
+        <execution>
+          <id>snyk-monitor</id>
+          <phase>none</phase>
+          <goals>
+            <goal>monitor</goal>
+          </goals>
+          <configuration>
+            <args>
+              <arg>--project-name=shahboz_1_snyk_monitor</arg>
+            </args>
+          </configuration>
+        </execution>
+      </executions>
     </plugin>
 <!-- Snyk Changes for SCA Ends Here -->
 		</plugins>
