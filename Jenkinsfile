@@ -5,6 +5,12 @@ pipeline {
     }
   environment {
         REPORT_EMAIL = 'olimovshahboz501@gmail.com'
+        // ECR target; the push uses the EC2 instance role, so no AWS keys are stored in Jenkins
+        AWS_REGION     = 'eu-north-1'
+        AWS_ACCOUNT_ID = '855215820447'
+        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REPO       = 'buggy-app'
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"
     }
    stages{
     stage('CompileandRunSonarAnalysis') {
@@ -23,6 +29,21 @@ pipeline {
 		}
 		// Turn the JSON results into a readable HTML report
 		sh 'npx --yes snyk-to-html@3.7.11 -i snyk-report.json -o snyk-report.html'
+			}
+      }
+
+    stage('BuildDockerImage') {
+            steps {
+		sh 'docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPO:latest .'
+			}
+      }
+
+    stage('PushImageToECR') {
+            steps {
+		// Short-lived ECR login token from the instance role, piped straight into docker login
+		sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY'
+		sh 'docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG'
+		sh 'docker push $ECR_REGISTRY/$ECR_REPO:latest'
 			}
       }
   }
