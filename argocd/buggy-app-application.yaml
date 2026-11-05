@@ -1,0 +1,28 @@
+# Argo CD Application: keeps the buggy-app namespace in EKS identical to helm/buggy-app on the main branch.
+# Jenkins only changes image.tag in values.yaml; Argo CD notices the commit and deploys it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: buggy-app
+  namespace: argocd
+  # Deleting the Application also deletes the Kubernetes resources it created
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/OlimovShahboz/devsecops-jenkins-k8s-tf-sast-sonarcloud-repo.git
+    targetRevision: main
+    path: helm/buggy-app
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: buggy-app
+  syncPolicy:
+    automated:
+      prune: true    # remove resources that were deleted from the chart
+      selfHeal: true # undo manual kubectl changes in the cluster
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: buggy-app
+description: EasyBuggy, a deliberately vulnerable Java web app, deployed to EKS for DevSecOps practice
+type: application
+# Chart version: bump when the templates change
+version: 0.1.0
+# App version: the image tag is set by Jenkins (build number) at deploy time
+appVersion: "1-SNAPSHOT"

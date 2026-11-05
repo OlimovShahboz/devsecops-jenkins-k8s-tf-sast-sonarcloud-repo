@@ -1,0 +1,13 @@
+buggy-app {{ .Values.image.tag }} is deployed to namespace {{ .Release.Namespace }}.
+
+{{- if eq .Values.service.type "LoadBalancer" }}
+
+Get the URL (the load balancer can take 2-3 minutes to get a DNS name):
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "buggy-app.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+Then open http://<that hostname>/ (only reachable from: {{ join ", " .Values.service.loadBalancerSourceRanges }})
+{{- else }}
+
+Reach it locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "buggy-app.fullname" . }} 8080:{{ .Values.service.port }}
+Then open http://localhost:8080/
+{{- end }}

@@ -1,0 +1,74 @@
+# Default values for buggy-app. Jenkins overrides image.repository and image.tag on every deploy.
+
+replicaCount: 1
+
+image:
+  repository: 855215820447.dkr.ecr.eu-north-1.amazonaws.com/buggy-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# The app never calls the Kubernetes API, so it gets no API token
+automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+# The image runs as root (eclipse-temurin default); drop every Linux capability and block escalation
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+# Port of the embedded Tomcat in easybuggy.jar
+containerPort: 8080
+
+service:
+  type: LoadBalancer
+  port: 80
+  annotations: {}
+  # EasyBuggy is vulnerable on purpose: only these source IPs may reach the load balancer.
+  # Replace with your own public IP (curl https://checkip.amazonaws.com) and keep the /32.
+  loadBalancerSourceRanges:
+    - 0.0.0.0/0
+
+# JVM flags in the Dockerfile: -Xmx256m, 128m metaspace, 90m direct memory
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 768Mi
+
+# Health checks hit the app's /ping servlet
+probes:
+  path: /ping
+  startup:
+    periodSeconds: 5
+    failureThreshold: 36 # up to 3 minutes to start (Tomcat, Derby and the embedded LDAP)
+  readiness:
+    periodSeconds: 10
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

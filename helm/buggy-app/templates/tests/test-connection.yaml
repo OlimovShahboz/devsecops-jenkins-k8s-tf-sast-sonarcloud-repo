@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "buggy-app.fullname" . }}-test-connection"
+  labels:
+    {{- include "buggy-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: wget
+      image: busybox:1.37
+      command: ["wget", "-q", "-O-", "http://{{ include "buggy-app.fullname" . }}:{{ .Values.service.port }}{{ .Values.probes.path }}"]
+  restartPolicy: Never
