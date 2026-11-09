@@ -20,6 +20,10 @@ pipeline {
         ARGOCD_ALLOWED_CIDR  = '132.231.155.33/32' // who may open the Argo CD UI: your public IP
         GITOPS_REPO          = 'github.com/OlimovShahboz/devsecops-jenkins-k8s-tf-sast-sonarcloud-repo.git'
         VALUES_FILE          = 'helm/buggy-app/values.yaml'
+        // DAST: ZAP runs on the Jenkins server and scans the pod through kubectl port-forward
+        ZAP_VERSION    = '2.17.0'
+        ZAP_SHA256     = 'efe799aaa3627db683b43f00c9c210aea0b75c00cc8f0a0f0434d12bb3ddde5a' // ZAP_2.17.0_Linux.tar.gz
+        ZAP_LOCAL_PORT = '18080'
     }
    stages{
     stage('CompileandRunSonarAnalysis') {
@@ -107,15 +111,56 @@ pipeline {
 		}
 			}
       }
+
+    stage('WaitForArgoCDDeploy') {
+            steps {
+		// Ask Argo CD to re-read Git now instead of at its next 3-minute poll
+		sh 'kubectl -n argocd annotate application buggy-app argocd.argoproj.io/refresh=normal --overwrite'
+		// Wait until the Deployment runs this build's image, then until its pods are ready
+		sh '''
+		  for i in $(seq 1 60); do
+		    IMG=$(kubectl -n buggy-app get deploy buggy-app -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+		    case "$IMG" in *":$IMAGE_TAG") echo "Argo CD applied $IMG"; break;; esac
+		    sleep 10
+		  done
+		  case "$IMG" in *":$IMAGE_TAG") ;; *) echo "Argo CD did not deploy tag $IMAGE_TAG within 10 minutes (current: $IMG)"; exit 1;; esac
+		  kubectl -n buggy-app rollout status deploy/buggy-app --timeout=10m
+		'''
+			}
+      }
+
+    stage('DASTScanWithZAP') {
+            steps {
+		// Use the ZAP that install_jenkins.sh installed; if it's missing, download the pinned release and verify its checksum
+		sh '''
+		  if ! command -v zap.sh >/dev/null 2>&1 && [ ! -x "$HOME/zap/ZAP_$ZAP_VERSION/zap.sh" ]; then
+		    mkdir -p "$HOME/zap"
+		    curl -fsSLo "$HOME/zap/zap.tar.gz" "https://github.com/zaproxy/zaproxy/releases/download/v$ZAP_VERSION/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+		    echo "$ZAP_SHA256  $HOME/zap/zap.tar.gz" | sha256sum -c -
+		    tar -xzf "$HOME/zap/zap.tar.gz" -C "$HOME/zap" && rm "$HOME/zap/zap.tar.gz"
+		  fi
+		'''
+		// Scan the pod itself: port-forward from the Jenkins server to the Service, then run the ZAP plan against it
+		sh '''
+		  ZAP=$(command -v zap.sh || echo "$HOME/zap/ZAP_$ZAP_VERSION/zap.sh")
+		  kubectl -n buggy-app port-forward svc/buggy-app $ZAP_LOCAL_PORT:80 > port-forward.log 2>&1 &
+		  PF_PID=$!
+		  trap 'kill $PF_PID' EXIT
+		  for i in $(seq 1 30); do curl -fs "http://localhost:$ZAP_LOCAL_PORT/ping" >/dev/null && break; sleep 2; done
+		  export ZAP_TARGET="http://localhost:$ZAP_LOCAL_PORT"
+		  "$ZAP" -cmd -autorun "$WORKSPACE/zap/zap-plan.yaml"
+		'''
+			}
+      }
   }
   post {
     always {
-		archiveArtifacts artifacts: 'snyk-report.*', allowEmptyArchive: true
+		archiveArtifacts artifacts: 'snyk-report.*, zap-report.*', allowEmptyArchive: true
 		emailext(
 			to: "${REPORT_EMAIL}",
-			subject: "Snyk SCA report: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${currentBuild.currentResult})",
-			body: "Snyk SCA results for ${env.JOB_NAME} build #${env.BUILD_NUMBER} are attached (HTML and JSON).\nBuild: ${env.BUILD_URL}",
-			attachmentsPattern: 'snyk-report.*'
+			subject: "Security reports: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${currentBuild.currentResult})",
+			body: "Snyk SCA and OWASP ZAP DAST results for ${env.JOB_NAME} build #${env.BUILD_NUMBER} are attached (HTML and JSON).\nBuild: ${env.BUILD_URL}",
+			attachmentsPattern: 'snyk-report.*, zap-report.*'
 		)
     }
   }

@@ -1,0 +1,70 @@
+# OWASP ZAP Automation Framework plan: DAST scan of buggy-app running in EKS.
+# Run with: zap.sh -cmd -autorun zap/zap-plan.yaml
+# ${ZAP_TARGET} and ${WORKSPACE} come from the Jenkins environment.
+env:
+  contexts:
+    - name: buggy-app
+      urls:
+        - ${ZAP_TARGET}
+      includePaths:
+        - ${ZAP_TARGET}.*
+      # EasyBuggy pages that crash, hang or exhaust the JVM on purpose. Scanning them would
+      # take the pod down mid-scan, so they are skipped (they are not web vulnerabilities).
+      excludePaths:
+        - .*/exit.*
+        - .*/jvmcrasheav.*
+        - .*/jnicall.*
+        - .*/deadlock.*
+        - .*/endlesswaiting.*
+        - .*/infiniteloop.*
+        - .*/forwardloop.*
+        - .*/redirectloop.*
+        - .*/memoryleak.*
+        - .*/oome.*
+        - .*/sofe.*
+        - .*/threadleak.*
+        - .*/netsocketleak.*
+        - .*/filedescriptorleak.*
+        - .*/dbconnectionleak.*
+        - .*/createobjects.*
+        - .*/slowre.*
+        - .*/strplusopr.*
+        - .*/asserr.*
+        - .*/eie.*
+        - .*/fce.*
+        - .*/ncdfe.*
+        - .*/tfce.*
+        - .*/logout.*
+  parameters:
+    failOnError: true     # stop if ZAP itself fails (target unreachable, bad plan)
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # Crawl the app to find pages and parameters
+  - type: spider
+    parameters:
+      context: buggy-app
+      maxDuration: 3
+  # Wait for the passive rules (headers, cookies, info leaks) to finish on everything crawled
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  # Send attack payloads (SQLi, XSS, path traversal, ...) to the crawled pages
+  - type: activeScan
+    parameters:
+      context: buggy-app
+      maxRuleDurationInMins: 2
+      maxScanDurationInMins: 15
+  # Findings are reported, not used to fail the build (the app is vulnerable on purpose)
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: ${WORKSPACE}
+      reportFile: zap-report.html
+      reportTitle: buggy-app DAST scan
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: ${WORKSPACE}
+      reportFile: zap-report.json
