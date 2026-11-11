@@ -18,7 +18,7 @@ pipeline {
         // Argo CD deploys the app from Git; Jenkins only installs it once and bumps the image tag
         ARGOCD_CHART_VERSION = '10.14.0'
         ARGOCD_ALLOWED_CIDR  = '132.231.155.33/32' // who may open the Argo CD UI: your public IP
-        GITOPS_REPO          = 'github.com/OlimovShahboz/devsecops-jenkins-k8s-tf-sast-sonarcloud-repo.git'
+        GITOPS_REPO_PATH     = 'OlimovShahboz/devsecops-jenkins-k8s-tf-sast-sonarcloud-repo.git'
         VALUES_FILE          = 'helm/buggy-app/values.yaml'
         // DAST: ZAP runs on the Jenkins server and scans the pod through kubectl port-forward
         ZAP_VERSION    = '2.17.0'
@@ -96,7 +96,8 @@ pipeline {
     stage('UpdateHelmImageTag') {
             steps {
 		// GitOps: write the new image tag into the chart and push it; Argo CD then deploys that commit
-		withCredentials([usernamePassword(credentialsId: 'github-token', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+		// Pushes over SSH with a repo-scoped deploy key (write access), so no personal access token is needed
+		withCredentials([sshUserPrivateKey(credentialsId: 'github-deploy-key', keyFileVariable: 'SSH_KEY')]) {
 		sh '''
 		  git fetch origin main
 		  git checkout -B main origin/main
@@ -106,7 +107,8 @@ pipeline {
 		  git config user.email "jenkins@buggy-app.local"
 		  git add $VALUES_FILE
 		  git commit -m "Deploy buggy-app:$IMAGE_TAG [skip ci]"
-		  git push "https://$GIT_USER:$GIT_TOKEN@$GITOPS_REPO" main
+		  export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+		  git push "git@github.com:$GITOPS_REPO_PATH" main
 		'''
 		}
 			}
