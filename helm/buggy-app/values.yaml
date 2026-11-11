@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: 855215820447.dkr.ecr.eu-north-1.amazonaws.com/buggy-app
-  tag: latest
+  tag: "16"
   pullPolicy: IfNotPresent
 
 nameOverride: ""
